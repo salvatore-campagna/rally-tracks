@@ -31,7 +31,7 @@ from shared.parameter_sources.templates import (
 )
 from shared.parameter_sources.track_params import TrackParamSource
 from shared.parameter_sources.workflow_selector import WorkflowSelectorParamSource
-from shared.runners import datastream, snapshot
+from shared.runners import columnar_vocabulary, datastream, snapshot
 from shared.runners.bulk import RawBulkIndex
 from shared.runners.ilm import create_ilm
 from shared.runners.pipelines import create_pipeline
@@ -84,6 +84,9 @@ def register(registry):
     registry.register_runner("validate-package-assets", validate_package_assets, async_runner=True)
 
     registry.register_param_source("processed-source", ProcessedCorpusParamSource)
+
+    registry.register_runner("columnar-vocab-term-count", columnar_vocabulary.term_count, async_runner=True)
+    registry.register_runner("columnar-vocab-validate", columnar_vocabulary.validate, async_runner=True)
 
     registry.register_runner("create-ilm", create_ilm, async_runner=True)
     registry.register_runner("create-slm", create_slm, async_runner=True)

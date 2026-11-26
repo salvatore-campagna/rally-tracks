@@ -1,0 +1,40 @@
+{% import "rally.helpers" as rally %}
+{
+  "name": "columnar-vocabulary-queries",
+  "description": "Times four operations on the force-merged logs data streams of the current cluster and validates their results. Removes no data. Q1 is esql_basic_count_group_3, Q2 to Q4 are local operations on host.mac and redis.slowlog.args. Each visit of a query clears the node query cache, the shard request cache and fielddata, runs untimed warmup requests, then timed requests with one client. The query order rotates with columnar_vocab_order_id and with the cycle. The text of Q1 in the validate operation repeats esql_basic_count_group_3.",
+  "default": false,
+  "parameters": {
+    "generate-data": false
+  },
+  "schedule": [
+    {% set order_id = (columnar_vocab_order_id | default(0)) | int %}
+    {% set cycles = (columnar_vocab_cycles | default(3)) | int %}
+    {% set warmup = (columnar_vocab_warmup_iterations | default(20)) | int %}
+    {% set iterations = (columnar_vocab_iterations | default(100)) | int %}
+    {% set queries = ["q1", "q2", "q3", "q4"] %}
+    {% set operations = {"q1": "esql_basic_count_group_3", "q2": "columnar_vocab_host_mac_term_count", "q3": "columnar_vocab_host_mac_group", "q4": "columnar_vocab_redis_args_group"} %}
+    {% for cycle in range(cycles) %}
+    {% for position in range(queries | length) %}
+    {% set query = queries[(order_id + cycle + position) % (queries | length)] %}
+    {
+      "name": "clear-caches-c{{ cycle }}-p{{ position }}-{{ query }}",
+      "operation": "columnar_vocab_clear_caches",
+      "tags": ["columnar-vocab"]
+    },
+    {
+      "name": "{{ query }}-c{{ cycle }}-p{{ position }}",
+      "operation": "{{ operations[query] }}",
+      "clients": 1,
+      "warmup-iterations": {{ warmup }},
+      "iterations": {{ iterations }},
+      "tags": ["columnar-vocab", "{{ query }}"]
+    },
+    {% endfor %}
+    {% endfor %}
+    {
+      "name": "validate",
+      "operation": "columnar_vocab_validate",
+      "tags": ["columnar-vocab", "validate"]
+    }
+  ]
+}

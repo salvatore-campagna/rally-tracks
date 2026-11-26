@@ -1,0 +1,28 @@
+{
+  "name": "columnar_vocab_clear_caches",
+  "operation-type": "raw-request",
+  "method": "POST",
+  "path": "/logs-*/_cache/clear?query=true&request=true&fielddata=true",
+  "include-in-reporting": false
+},
+{
+  "name": "columnar_vocab_host_mac_term_count",
+  "operation-type": "columnar-vocab-term-count"
+},
+{
+  "name": "columnar_vocab_host_mac_group",
+  "operation-type": "esql",
+  "query": "FROM logs-system.syslog-* | STATS c=count(*) BY host.mac | SORT c DESC | LIMIT 20"
+},
+{
+  "name": "columnar_vocab_redis_args_group",
+  "operation-type": "esql",
+  "query": "FROM logs-redis.slowlog-* | STATS c=count(*) BY redis.slowlog.args | SORT c DESC | LIMIT 20"
+},
+{
+  "name": "columnar_vocab_validate",
+  "operation-type": "columnar-vocab-validate",
+  "label": "{{ columnar_vocab_label | default('unnamed') }}",
+  "q1-query": "FROM logs-* | STATS count=count(*) BY agent.version, agent.type, agent.hostname | SORT count DESC | LIMIT 20",
+  "include-in-reporting": false
+}
