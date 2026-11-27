@@ -73,6 +73,13 @@
         "index": "logs-*",
         "operation": "refresh"
       }
+      {%- if columnar_vocab_queries is defined %},
+      {% set order_id = (columnar_vocab_order_id | default(0)) | int %}
+      {% set cycles = (columnar_vocab_cycles | default(3)) | int %}
+      {% set warmup = (columnar_vocab_warmup_iterations | default(20)) | int %}
+      {% set iterations = (columnar_vocab_iterations | default(100)) | int %}
+      {% include "tasks/columnar-vocabulary.json" %}
+      {%- endif %}
       {%- endif %}
       {# non-serverless-index-statistics-marker-start #}{%- if build_flavor != "serverless" or serverless_operator == true -%},
       {

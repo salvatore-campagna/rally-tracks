@@ -11,30 +11,6 @@
     {% set cycles = (columnar_vocab_cycles | default(3)) | int %}
     {% set warmup = (columnar_vocab_warmup_iterations | default(20)) | int %}
     {% set iterations = (columnar_vocab_iterations | default(100)) | int %}
-    {% set queries = ["q1", "q2", "q3", "q4"] %}
-    {% set operations = {"q1": "esql_basic_count_group_3", "q2": "columnar_vocab_host_mac_term_count", "q3": "columnar_vocab_host_mac_group", "q4": "columnar_vocab_redis_args_group"} %}
-    {% for cycle in range(cycles) %}
-    {% for position in range(queries | length) %}
-    {% set query = queries[(order_id + cycle + position) % (queries | length)] %}
-    {
-      "name": "clear-caches-c{{ cycle }}-p{{ position }}-{{ query }}",
-      "operation": "columnar_vocab_clear_caches",
-      "tags": ["columnar-vocab"]
-    },
-    {
-      "name": "{{ query }}-c{{ cycle }}-p{{ position }}",
-      "operation": "{{ operations[query] }}",
-      "clients": 1,
-      "warmup-iterations": {{ warmup }},
-      "iterations": {{ iterations }},
-      "tags": ["columnar-vocab", "{{ query }}"]
-    },
-    {% endfor %}
-    {% endfor %}
-    {
-      "name": "validate",
-      "operation": "columnar_vocab_validate",
-      "tags": ["columnar-vocab", "validate"]
-    }
+    {% include "tasks/columnar-vocabulary.json" %}
   ]
 }
