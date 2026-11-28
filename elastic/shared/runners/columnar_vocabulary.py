@@ -28,20 +28,27 @@ _chosen_mac = None
 
 
 async def _resolve_mac(es):
-    """A host.mac term of median frequency among the terms of system.syslog. The terms aggregation orders by document count
-    descending and key ascending, so equal data gives the same term in every run. Resolved once and cached."""
+    """A host.mac term of median frequency among the terms of system.syslog. The terms are ordered by document count descending and
+    key ascending, so equal data gives the same term in every run. A composite aggregation pages through all terms, because a terms
+    aggregation cannot return the full list at this scale. Resolved once and cached."""
     global _chosen_mac
     if _chosen_mac is None:
-        response = await es.perform_request(
-            method="POST",
-            path=f"/{SYSLOG}/_search",
-            params={"request_cache": "false"},
-            body={"size": 0, "aggs": {"macs": {"terms": {"field": "host.mac", "size": 10000, "order": [{"_count": "desc"}, {"_key": "asc"}]}}}},
-        )
-        agg = response["aggregations"]["macs"]
-        if agg.get("sum_other_doc_count", 0) != 0:
-            raise AssertionError("host.mac has more than 10000 terms, the term choice would be incomplete")
-        _chosen_mac = agg["buckets"][len(agg["buckets"]) // 2]["key"]
+        counts = []
+        after = None
+        while True:
+            spec = {"sources": [{"mac": {"terms": {"field": "host.mac"}}}], "size": PAGE_SIZE}
+            if after is not None:
+                spec["after"] = after
+            response = await es.perform_request(
+                method="POST", path=f"/{SYSLOG}/_search", params={"request_cache": "false"}, body={"size": 0, "aggs": {"g": {"composite": spec}}}
+            )
+            agg = response["aggregations"]["g"]
+            counts.extend((b["key"]["mac"], b["doc_count"]) for b in agg["buckets"])
+            after = agg.get("after_key")
+            if after is None or not agg["buckets"]:
+                break
+        counts.sort(key=lambda c: (-c[1], c[0]))
+        _chosen_mac = counts[len(counts) // 2][0]
     return _chosen_mac
 
 
@@ -81,7 +88,7 @@ async def _composite(es, index, fields):
             return sorted(buckets, key=lambda b: (-b[1], tuple("" if k is None else str(k) for k in b[0]))), pages
 
 
-def _tie_aware(full, timed_rows):
+def _tie_aware(full, timed_rows, columns):
     """Compares a timed top N with the complete ranking: groups above the cutoff count must match exactly, groups at the cutoff count
     may be any members of that tie."""
     if len(full) < TOP_N:
@@ -89,7 +96,8 @@ def _tie_aware(full, timed_rows):
     cutoff = full[TOP_N - 1][1]
     above = {tuple(b[0]): b[1] for b in full if b[1] > cutoff}
     tie = {tuple(b[0]) for b in full if b[1] == cutoff}
-    timed = {tuple(r[:-1]): r[-1] for r in timed_rows}
+    count_at = columns.index("c")
+    timed = {tuple(v for i, v in enumerate(r) if i != count_at): r[count_at] for r in timed_rows}
     return {
         "checked": True,
         "cutoff_count": cutoff,
@@ -124,7 +132,7 @@ async def validate(es, params):
             "sum_doc_count": sum(g[1] for g in groups),
             "pages": pages,
             "hash": _digest(groups),
-            "tie_check_against_timed_query": _tie_aware(groups, timed.get("values", [])),
+            "tie_check_against_timed_query": _tie_aware(groups, timed.get("values", []), [c["name"] for c in timed.get("columns", [])]),
         }
     result["Q1"]["complete"] = result["Q1"]["sum_doc_count"] == total
     with open(os.path.join(out_dir, f"validation-{name}.json"), "w") as out:
